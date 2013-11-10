@@ -6,13 +6,13 @@
   "keywords": [],
   "dependencies": {
     "components/underscore": "1.4.4",
-    "green-mesa/dom": "0.10.0",
-    "green-mesa/backbone-events": "*"
+    "green-mesa/dom": "0.10.0"
   },
-  "development": {},
+  "development": {
+    "green-mesa/hyperbone-view" : "*"
+  },
   "license": "MIT",
   "scripts": [
     "index.js"
-  ],
-  "remotes": []
+  ]
 }
