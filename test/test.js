@@ -57,30 +57,6 @@ describe("suite", function(){
 
 		});
 
-		it("successfully binds inputs in a form to properties", function( done ){
-
-			var html, m;
-
-			html = dom('<div><form hb-with-command="cmds:do-something"><input name="username"><input name="password"><input type="submit" value="Submit"></form></div>')
-
-			m = new Model( useFixture('simple') );
-
-			new HyperboneView({
-				model : m,
-				el : html.els[0]
-			});
-
-			setValueAndTrigger(html.find('[name="username"]'), "Hello", 'change');
-
-			setTimeout(function(){
-
-				expect( m.command('cmds:do-something').get('properties.username') ).to.equal("Hello");
-				done();
-
-			},50);
-
-		});
-
 		it("issues a submit:cmds:do-something when user clicks submit", function( done ){
 
 			var html, m;
@@ -105,7 +81,56 @@ describe("suite", function(){
 
 			simulateClick(html.find('[type="submit"'));
 
-		})
+		});
+
+		it("issues a change:cmds:do-something event when the user changes an input value", function( done ){
+
+			var html, m;
+
+			html = dom('<div><form hb-with-command="cmds:do-something"><input name="username"><input name="password"><input type="submit" value="Submit"></form></div>')
+
+			m = new Model( useFixture('simple') );
+
+			new HyperboneView({
+				model : m,
+				el : html.els[0]
+			});
+
+			m.on('change:cmds:do-something', function(cmd){
+
+				expect(cmd.isHyperbone).to.equal(true);
+				done();
+
+			})
+
+			setValueAndTrigger(html.find('[name="username"]'), 'Hello world', 'change');
+
+		});
+
+		it("successfully binds inputs in a form to properties", function( done ){
+
+			var html, m;
+
+			html = dom('<div><form hb-with-command="cmds:do-something"><input name="username"><input name="password"><input type="submit" value="Submit"></form></div>')
+
+			m = new Model( useFixture('simple') );
+
+			new HyperboneView({
+				model : m,
+				el : html.els[0]
+			});
+
+			m.on('change:cmds:do-something', function( cmd ){
+
+				expect( m.command('cmds:do-something').get('properties.username') ).to.equal("Hello");
+				done();
+			});
+
+			setValueAndTrigger(html.find('[name="username"]'), "Hello", 'change');
+
+
+		});
+
 
 	});
 

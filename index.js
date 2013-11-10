@@ -39,6 +39,8 @@ module.exports = {
 						properties.set(property, newVal);
 					}
 
+					self.model.trigger('change:' + value, cmd);
+
 				});
 
 			});
