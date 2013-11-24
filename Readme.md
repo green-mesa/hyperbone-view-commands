@@ -2,7 +2,9 @@
 
 [![Build Status](https://travis-ci.org/green-mesa/hyperbone-view-commands.png?branch=master)](https://travis-ci.org/green-mesa/hyperbone-view-commands)
 
-This module isn't complete yet.
+Basic `_command` to `<form>` bindings for Hyperbone View. This is a lot lot lot more useful than it sounds.
+
+Sorry about the lack of documentation, this module only has the most basic functionality as yet.
 
 ## Testing
 
