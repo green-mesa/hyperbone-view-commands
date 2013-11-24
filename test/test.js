@@ -37,7 +37,7 @@ describe("suite", function(){
 
 			var html, m;
 
-			html = dom('<div><form hb-with-command="cmds:do-something"><input name="username"><input name="password"><input type="submit" value="Submit"></form></div>')
+			html = dom('<div><form hb-with-command="cmds:do-something"><input name="username"><input name="password"><input type="submit" value="Submit"></form></div>');
 
 			m = new Model( useFixture('simple') );
 
@@ -61,7 +61,7 @@ describe("suite", function(){
 
 			var html, m;
 
-			html = dom('<div><form hb-with-command="cmds:do-something"><input name="username"><input name="password"><input type="submit" value="Submit"></form></div>')
+			html = dom('<div><form hb-with-command="cmds:do-something"><input name="username"><input name="password"><input type="submit" id="submit" value="Submit"></form></div>');
 
 			m = new Model( useFixture('simple') );
 
@@ -77,9 +77,9 @@ describe("suite", function(){
 				expect(cmd.get('properties').get('username')).to.equal('Hello world');
 				done();
 
-			})
+			});
 
-			simulateClick(html.find('[type="submit"'));
+			simulateClick(html.find('#submit'));
 
 		});
 
@@ -87,7 +87,7 @@ describe("suite", function(){
 
 			var html, m;
 
-			html = dom('<div><form hb-with-command="cmds:do-something"><input name="username"><input name="password"><input type="submit" value="Submit"></form></div>')
+			html = dom('<div><form hb-with-command="cmds:do-something"><input name="username"><input name="password"><input type="submit" value="Submit"></form></div>');
 
 			m = new Model( useFixture('simple') );
 
@@ -101,7 +101,7 @@ describe("suite", function(){
 				expect(cmd.isHyperbone).to.equal(true);
 				done();
 
-			})
+			});
 
 			setValueAndTrigger(html.find('[name="username"]'), 'Hello world', 'change');
 
@@ -111,7 +111,7 @@ describe("suite", function(){
 
 			var html, m;
 
-			html = dom('<div><form hb-with-command="cmds:do-something"><input name="username"><input name="password"><input type="submit" value="Submit"></form></div>')
+			html = dom('<div><form hb-with-command="cmds:do-something"><input name="username"><input name="password"><input type="submit" value="Submit"></form></div>');
 
 			m = new Model( useFixture('simple') );
 
