@@ -75,6 +75,16 @@ module.exports = {
 
 			}
 
+		},
+		"if-command" : function(node, prop, cancel){
+			var self = this,
+				test = function(){
+					dom(node).css({display: ( self.model.command(prop) ? '': 'none') });
+				};
+
+				this.model.on('command-found:' + prop, function(){ test(); });
+				// do the initial state.
+				test();
 		}
 	}
 };
