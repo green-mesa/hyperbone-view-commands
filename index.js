@@ -6,58 +6,75 @@
 
 var dom = require('dom');
 
+function bindCommand(cmd, root, model, value){
+
+	var properties = cmd.get('properties');
+	var self = this;
+
+	root.find('[name]').each(function(el){
+
+		var property = el.attr('name');
+		var val = properties.get(property);
+		el.val(val);
+
+		properties.on('change:' + property, function(val){
+			var oldVal = el.val();
+			var newVal = properties.get(property);
+			if(oldVal !== newVal){
+				el.val(newVal);
+			}
+		});
+
+		el.on('change', function(e){
+			var oldVal = properties.get(property);
+			var newVal = el.val();
+
+			if(oldVal !== newVal){
+				properties.set(property, newVal);
+			}
+
+			model.trigger('change:' + value, cmd);
+
+		});
+
+	});
+
+	root.on('submit', function(e){
+		e.preventDefault();
+		model.trigger('submit:' + value, cmd);
+	});
+
+}
+
 module.exports = {
 
 	"attributeHandlers" : {
 
 		"hb-with-command" : function(node, value, cancel){
 
+			var self = this;
 			var root = dom(node);
 			var cmd = this.model.command(value);
-			var properties = cmd.get('properties');
-			var self = this;
 
-			root.find('[name]').each(function(el){
+			if(cmd){
 
-				var property = el.attr('name');
-				var val = properties.get(property);
-				el.val(val);
+				bindCommand(cmd, root, this.model, value);
 
-				properties.on('change:' + property, function(val){
-					var oldVal = el.val();
-					var newVal = properties.get(property);
-					if(oldVal !== newVal){
-						el.val(newVal);
+			} else {
+
+				var recheckCommand = function(){
+					var cmd = self.model.command(value);
+					if(cmd){
+						// don't do this again
+						self.model.off('change', recheckCommand);
+						bindCommand(cmd, root, self.model, value);
 					}
-				});
+				};
 
-				el.on('change', function(e){
-					var oldVal = properties.get(property);
-					var newVal = el.val();
+				this.model.on('change', recheckCommand);
 
-					if(oldVal !== newVal){
-						properties.set(property, newVal);
-					}
-
-					self.model.trigger('change:' + value, cmd);
-
-				});
-
-			});
-
-			root.on('submit', function(e){
-				e.preventDefault();
-				self.model.trigger('submit:' + value, cmd);
-			})
-
-		},
-
-		"hb-command-auto" : function(node, value, cancel){
-
-	    },
-
-		"hb-bind-command" : function(node, value, cancel){
+			}
 
 		}
 	}
-}
+};
