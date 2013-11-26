@@ -44,6 +44,8 @@ function bindCommand(cmd, root, model, value){
 		model.trigger('submit:' + value, cmd);
 	});
 
+	root.addClass('bound-to-command');
+
 }
 
 module.exports = {
@@ -66,12 +68,12 @@ module.exports = {
 					var cmd = self.model.command(value);
 					if(cmd){
 						// don't do this again
-						self.model.off('change', recheckCommand);
+						self.model.off('command-found' + value, recheckCommand);
 						bindCommand(cmd, root, self.model, value);
 					}
 				};
 
-				this.model.on('change', recheckCommand);
+				this.model.on('command-found:' + value, recheckCommand);
 
 			}
 
@@ -82,7 +84,7 @@ module.exports = {
 					dom(node).css({display: ( self.model.command(prop) ? '': 'none') });
 				};
 
-				this.model.on('command-found:' + prop, function(){ test(); });
+				this.model.on('command-found:' + prop, test);
 				// do the initial state.
 				test();
 		}
