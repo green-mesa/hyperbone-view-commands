@@ -123,7 +123,7 @@
  */
     exports.bind = function(el, type, fn, capture) {
       if (el.addEventListener) {
-        el.addEventListener(type, fn, capture || false);
+        el.addEventListener(type, fn, capture);
       } else {
         el.attachEvent("on" + type, fn);
       }
@@ -141,7 +141,7 @@
  */
     exports.unbind = function(el, type, fn, capture) {
       if (el.removeEventListener) {
-        el.removeEventListener(type, fn, capture || false);
+        el.removeEventListener(type, fn, capture);
       } else {
         el.detachEvent("on" + type, fn);
       }
@@ -426,43 +426,6 @@
       return el;
     };
   })
-  require.register("component-sort", function(exports, require, module) {
-    /**
- * Expose `sort`.
- */
-    exports = module.exports = sort;
-    /**
- * Sort `el`'s children with the given `fn(a, b)`.
- *
- * @param {Element} el
- * @param {Function} fn
- * @api public
- */
-    function sort(el, fn) {
-      var arr = [].slice.call(el.children).sort(fn);
-      var frag = document.createDocumentFragment();
-      for (var i = 0; i < arr.length; i++) {
-        frag.appendChild(arr[i]);
-      }
-      el.appendChild(frag);
-    }
-    /**
- * Sort descending.
- *
- * @param {Element} el
- * @param {Function} fn
- * @api public
- */
-    exports.desc = function(el, fn) {
-      sort(el, function(a, b) {
-        return ~fn(a, b) + 1;
-      });
-    };
-    /**
- * Sort ascending.
- */
-    exports.asc = sort;
-  })
   require.register("value", function(exports, require, module) {
     /**
  * Module dependencies.
@@ -519,11 +482,7 @@
       switch (type(el)) {
        case "checkbox":
        case "radio":
-        if (val) {
-          el.checked = true;
-        } else {
-          el.checked = false;
-        }
+        el.checked = val === true ? true : val == el.getAttribute("value");
         break;
 
        case "radiogroup":
@@ -673,6 +632,8 @@
     var type = require("type");
     var trim = require("trim");
     var css = require("css");
+    var eventRefs = {};
+    var expando = 0;
     /**
  * Attributes supported.
  */
@@ -757,6 +718,19 @@
     List.prototype.remove = function() {
       for (var i = 0; i < this.els.length; i++) {
         var el = this.els[i];
+        el.style.display = "none";
+        // hide it, if nothing else.
+        walkDOM(el, function(node) {
+          var id;
+          if (id = node.__expando) {
+            for (var j = 0; j < eventRefs[id].length; ++j) {
+              events.unbind(node, eventRefs[id][j].evt, eventRefs[id][j].fn);
+              delete eventRefs[id][j];
+            }
+          }
+          return true;
+        });
+        el.style.display = "";
         var parent = el.parentNode;
         if (parent) parent.removeChild(el);
       }
@@ -1006,6 +980,7 @@
  * @api public
  */
     List.prototype.on = function(event, selector, fn, capture) {
+      var id, cur;
       if ("string" == typeof selector) {
         for (var i = 0; i < this.els.length; ++i) {
           fn._delegate = delegate.bind(this.els[i], selector, event, fn, capture);
@@ -1015,7 +990,19 @@
       capture = fn;
       fn = selector;
       for (var i = 0; i < this.els.length; ++i) {
-        events.bind(this.els[i], event, fn, capture);
+        if (id = this.els[i].__expando) {} else {
+          id = ++expando;
+          this.els[i].__expando = id;
+        }
+        if (!eventRefs[id]) {
+          eventRefs[id] = [];
+        }
+        cur = eventRefs[id].length;
+        eventRefs[id][cur] = {
+          evt: event,
+          fn: fn
+        };
+        events.bind(this.els[i], eventRefs[id][cur].evt, eventRefs[id][cur].fn, capture);
       }
       return this;
     };
@@ -1032,8 +1019,9 @@
  * @api public
  */
     List.prototype.off = function(event, selector, fn, capture) {
+      var id, i;
       if ("string" == typeof selector) {
-        for (var i = 0; i < this.els.length; ++i) {
+        for (i = 0; i < this.els.length; ++i) {
           // TODO: add selector support back
           delegate.unbind(this.els[i], event, fn._delegate, capture);
         }
@@ -1041,8 +1029,17 @@
       }
       capture = fn;
       fn = selector;
-      for (var i = 0; i < this.els.length; ++i) {
-        events.unbind(this.els[i], event, fn, capture);
+      if (!selector) {
+        for (i = 0; i < this.els.length; ++i) {
+          id = this.els[i].__expando;
+          for (var j = 0; j < eventRefs[id].length; ++j) {
+            events.unbind(this.els[i], eventRefs[id][j].evt, eventRefs[id][j].fn);
+          }
+        }
+      } else {
+        for (i = 0; i < this.els.length; ++i) {
+          events.unbind(this.els[i], event, fn, capture);
+        }
       }
       return this;
     };
@@ -1328,6 +1325,23 @@
         return this.attr(name, val);
       };
     });
+    /**
+ * Walk Dom `node` and call `func`.
+ *
+ * @param {Object} domNode, {Function} callback
+ * @return null
+ * @api private
+ */
+    function walkDOM(node, func) {
+      var go = func(node);
+      if (go) {
+        node = node.firstChild;
+        while (node) {
+          walkDOM(node, func);
+          node = node.nextSibling;
+        }
+      }
+    }
   })
   require.register("backbone-events", function(exports, require, module) {
     //     Backbone.js 1.0.0
@@ -4183,11 +4197,13 @@
       }
     });
     var makeTemplate = require("uritemplate").parse;
+    var Command;
     var HyperboneModel = function(attributes, options) {
       // we override the initial function because we need to force a hypermedia parse at the
       // instantiation stage, not just the fetch/sync stage
       attributes || (attributes = {});
       // this will cause a throw later on...
+      this._links = {};
       this.attributes = {};
       this.cid = _.uniqueId("c");
       this.isHyperbone = true;
@@ -4200,13 +4216,11 @@
       if (options && options.collection) {
         this.collection = options.collection;
       }
-      if (options && options.parse) {
-        attributes = this.parse(this.parseHypermedia(attributes));
-      } else {
-        attributes = this.parseHypermedia(attributes);
+      // this parser is for turning the source input into compatible hypermedia.
+      if (this.parser) {
+        attributes = this.parser(attributes);
       }
       attributes = _.defaults({}, attributes, _.result(this, "defaults"));
-      // need to override the set method, methinks.
       this.set(attributes, {
         silent: true
       });
@@ -4214,13 +4228,42 @@
       this.initialize.apply(this, arguments);
     };
     _.extend(HyperboneModel.prototype, BackboneModel.prototype, {
+      reinit: function(attributes, options) {
+        attributes = _.defaults({}, attributes, _.result(this, "defaults"));
+        this.set(attributes);
+      },
       parseHypermedia: function(attributes) {
-        var self = this;
-        // parse links
-        this._links = attributes._links || {};
+        var self = this, signals = [];
+        // update existing links for existing models
+        if (attributes._links && this._links) {
+          _.each(attributes._links, function(val, id) {
+            if (!this._links[id]) {
+              signals.push(function() {
+                self.trigger("add-rel:" + id);
+              });
+            } else {
+              if (val.href !== this._links[id].href) {
+                signals.push(function() {
+                  self.trigger("change-rel:" + id);
+                });
+              }
+            }
+            this._links[id] = val;
+          }, this);
+          _.each(this._links, function(val, id) {
+            if (!attributes._links[id]) {
+              signals.push(function() {
+                delete self._links[id];
+                self.trigger("remove-rel:" + id);
+              });
+            }
+          }, this);
+        } else {
+          this._links = attributes._links || {};
+        }
         delete attributes._links;
         this._curies = {};
-        var curies = this._links ? this._links["curie"] ? [ this._links["curie"] ] : this._links["curies"] ? this._links["curies"] : null : null;
+        var curies = this._links["curie"] ? [ this._links["curie"] ] : this._links["curies"] ? this._links["curies"] : null;
         if (curies) {
           _.each(curies, function(curie) {
             if (!curie.templated) throw new Error("A curie without a template? What are you thinking?");
@@ -4243,48 +4286,97 @@
           delete attributes._embedded;
         }
         if (attributes._commands) {
-          this._commands = {};
-          var findCommands;
-          findCommands = function(obj) {
-            var temp = {};
-            _.each(obj, function(o, id) {
-              if (o.method) {
-                temp[id] = new HyperboneModel(o);
-                if (!o.href) {
-                  temp[id].set("href", self.url(), {
-                    silent: true
-                  });
-                }
-              } else {
-                temp[id] = findCommands(o);
+          if (!this._commands) {
+            this._commands = new HyperboneModel();
+          } else {
+            // find any deleted commands and delete them...
+            _.each(this._commands.attributes, function(cmd, id) {
+              if (!attributes._commands[id]) {
+                signals.push(function() {
+                  self.command(id).reset();
+                  delete self._commands.attributes[id];
+                  self.trigger("remove-command:" + id);
+                });
               }
             });
-            return temp;
-          };
-          this._commands = new HyperboneModel(findCommands(attributes._commands));
+          }
+          _.each(attributes._commands, function(cmd, id) {
+            // is it an existing command?
+            var currentCmd;
+            if (currentCmd = this.command(id)) {
+              // assignment on purpose. DO NOT FIX.
+              _.each(cmd, function(value, key) {
+                if (key !== "properties") {
+                  currentCmd.set(key, value);
+                } else {
+                  _.each(value, function(value, key) {
+                    currentCmd.set("properties." + key, value);
+                  });
+                }
+              });
+            } else {
+              // a new command?
+              this._commands.set(id, new Command(cmd));
+              var newCmd = this.command(id);
+              newCmd._parentModel = self;
+              _.each(newCmd.properties().attributes, function(value, key) {
+                newCmd.properties().on("change:" + key, function(properties, value) {
+                  self.trigger("change:" + key + ":" + id, newCmd, value);
+                });
+              });
+              if (!cmd.href) {
+                newCmd.set("href", self.url(), {
+                  silent: true
+                });
+              }
+              signals.push(function() {
+                self.trigger("add-command:" + id);
+              });
+            }
+          }, this);
           delete attributes._commands;
         }
+        _.each(signals, function(fn) {
+          fn();
+        });
         return attributes;
       },
       toJSON: function() {
         var obj = {};
         _.each(this.attributes, function(attr, key) {
-          if (attr.isHyperbone) {
+          if (attr && attr.isHyperbone) {
             obj[key] = attr.toJSON();
-          } else {
+          } else if (attr) {
             obj[key] = attr;
+          } else {
+            obj[key] = "";
           }
         }, this);
+        if (!_.isEmpty(this._links)) {
+          obj._links = this.rels();
+        }
+        if (this._commands) {
+          obj._commands = this._commands.toJSON();
+        }
         return obj;
       },
-      url: function() {
-        if (this._links.self && this._links.self.href) {
-          return this._links.self.href;
+      url: function(uri) {
+        if (uri) {
+          _.extend(this._links, {
+            self: {
+              href: uri
+            }
+          });
+          return this;
+        } else {
+          if (this._links.self && this._links.self.href) {
+            return this._links.self.href;
+          }
+          throw new Error("Not a hypermedia resource");
         }
-        throw new Error("Not a hypermedia resource");
       },
       get: function(attr) {
-        if (this.attributes[attr] || this.attributes[attr] === 0) {
+        if (this.attributes[attr] || this.attributes[attr] === 0 || this.attributes[attr] === "") {
           return this.attributes[attr];
         } else if (_.indexOf(attr, ".") !== -1 || /([a-zA-Z_]+)\[([0-9]+)\]/.test(attr)) {
           var parts = attr.split(".");
@@ -4294,14 +4386,18 @@
             return this.attributes[attr].get(remainder);
           } else {
             parts = attr.match(/([a-zA-Z_]+)\[([0-9]+)\]/);
-            var index = parseInt(parts[2], 10);
-            attr = parts[1];
-            if (_.isNumber(index) && this.attributes[attr]) {
-              if (remainder) {
-                return this.attributes[attr].at(index).get(remainder);
-              } else {
-                return this.attributes[attr].at(index);
+            if (parts) {
+              var index = parseInt(parts[2], 10);
+              attr = parts[1];
+              if (_.isNumber(index) && this.attributes[attr]) {
+                if (remainder) {
+                  return this.attributes[attr].at(index).get(remainder);
+                } else {
+                  return this.attributes[attr].at(index);
+                }
               }
+            } else {
+              return null;
             }
           }
         }
@@ -4309,6 +4405,9 @@
       },
       set: function(key, val, options) {
         var self = this;
+        if (key && (key._links || key._commands || key._embedded)) {
+          key = this.parseHypermedia(key);
+        }
         var attr, attrs, unset, changes, silent, changing, prev, current, Proto, parts;
         if (key == null) return this;
         // Handle both `"key", value` and `{key: value}` -style arguments.
@@ -4336,30 +4435,75 @@
         current = this.attributes, prev = this._previousAttributes;
         // Check for changes of `id`.
         if (this.idAttribute in attrs) this.id = attrs[this.idAttribute];
-        // Recursively call set on nested models and collections
-        _.each(attrs, function(value, key) {
-          if (_.isObject(value) && current[key] && current[key].isHyperbone) {
-            if (_.isArray(value)) {
-              // we're adding to a collection
-              _.each(value, function(model, index) {
-                current[key].at(index).set(model);
-              });
-              delete attrs[key];
-            } else {
-              current[key].set(value);
-              delete attrs[key];
+        // Recursively call set on nested models and collections, if we're not
+        // a brand new model
+        if (!_.isEmpty(this.attributes)) {
+          _.each(attrs, function(value, key) {
+            // is it an object that currently exists in this model?
+            if (_.isObject(value) && current[key] && current[key].isHyperbone) {
+              // is it an array, and we have a matching collection?
+              if (_.isArray(value) || current[key].models) {
+                // if we have a collection but it's not an array, make it an array
+                value = _.isArray(value) ? value : [ value ];
+                // if the existing collection or the array has no members...
+                if (value.length === 0 || current[key].length === 0) {
+                  // call reset to minimise the number of events fired
+                  current[key].reset(value);
+                } else if (current[key].length === value.length) {
+                  // we do a straight change operation on each
+                  current[key].each(function(model, index) {
+                    model.set(value[index]);
+                  });
+                } else if (current[key].length > value.length) {
+                  // we need to remove some models
+                  var destroyers = [];
+                  current[key].each(function(model, index) {
+                    if (value[index]) {
+                      model.set(value[index]);
+                    } else {
+                      destroyers.push(function() {
+                        model.remove();
+                      });
+                    }
+                  });
+                  _.each(destroyers, function(fn) {
+                    fn();
+                  });
+                } else {
+                  // we need to add some models
+                  _.each(value, function(value, index) {
+                    if (current[key].at(index)) {
+                      current[key].at(index).set(value);
+                    } else {
+                      current[key].add(value);
+                    }
+                  });
+                }
+                // clean up attributes
+                delete attrs[key];
+              } else {
+                // it exists in the current model, but it's not an array 
+                // so this is quite straightforward : recurse into set
+                current[key].set(value);
+                delete attrs[key];
+              }
             }
-          }
-        });
-        for (attr in attrs) {
+          });
+        }
+        // having dealt with updating any nested models/collections, we 
+        // now do set for attributes for this particular model
+        _.each(attrs, function(val, attr) {
+          // is the request a dot notation request?
           if (_.indexOf(attr, ".") !== -1 && !ignoreDotNotation) {
+            // break it up, recusively call set..
             parts = attr.split(".");
             attr = parts.pop();
             var path = parts.join(".");
             this.get(path).set(attr, val);
           } else {
-            val = attrs[attr];
+            // is val an object?
             if (_.isObject(val) && !_.isArray(val)) {
+              // is it a plain old javascript object?
               if (!val.isHyperbone && !noTraverse) {
                 if (this._prototypes[attr]) {
                   Proto = this._prototypes[attr];
@@ -4381,26 +4525,33 @@
                 }(attr);
               }
             } else if (_.isArray(val)) {
+              // we only want to convert a an array of objects
+              // into a nested collection. Anything else is just added
+              // as a javascript array.
               var containsJustObjects = true;
               _.each(val, function(element) {
+                // deliberately making a function within a loop here
                 if (!_.isObject(element)) containsJustObjects = false;
               });
               if (containsJustObjects) {
                 var elements = [];
+                // sort out our prototype
                 if (this._prototypes[attr]) {
                   Proto = this._prototypes[attr];
                 } else {
                   Proto = HyperboneModel;
                 }
+                // we want the default model to be a hyperbone model
+                // or whatever the user has selected as a prototype
                 var EmbeddedCollection = Collection.extend({
                   model: Proto
                 });
+                // create an embedded collection..
                 var collection = new EmbeddedCollection();
-                collection._parent = self;
-                _.each(val, function(element, id) {
-                  elements.push(element);
-                }, this);
-                collection.add(elements);
+                // add the array. Call reset so that we only get one event.
+                collection.reset(val);
+                // override the trigger method so we can efficently
+                // cascade events to the parent model
                 collection._trigger = collection.trigger;
                 collection.trigger = function(attr) {
                   return function() {
@@ -4410,6 +4561,7 @@
                     self.trigger.apply(self, args);
                   };
                 }(attr);
+                // update the reference to val
                 val = collection;
               }
             }
@@ -4421,7 +4573,7 @@
             delete this.changed[attr];
           }
           unset ? delete current[attr] : current[attr] = val;
-        }
+        }, this);
         // Trigger all relevant attribute changes.
         if (!silent) {
           if (changes.length) this._pending = true;
@@ -4444,17 +4596,13 @@
       },
       rel: function(rel, data) {
         var link = this._links[rel] || {};
-        if (!link) {
-          throw new Error("No such rel found");
-        }
+        if (!link) throw new Error("No such rel found");
         if (link.templated) {
-          if (!data) {
-            throw new Error("No data provided to expand templated uri");
-          } else {
-            return link.template.expand(data);
-          }
+          if (!data) throw new Error("No data provided to expand templated uri");
+          return link.template.expand(data);
         }
-        return this._links[rel].href ? this._links[rel].href : this._links[rel];
+        if (this._links && this._links[rel]) return this._links[rel].href ? this._links[rel].href : this._links[rel];
+        return "";
       },
       rels: function() {
         return this._links;
@@ -4467,13 +4615,11 @@
       },
       command: function(key) {
         var command;
-        if (this._links[key]) {
+        if (this._links[key] && this._commands) {
           var parts = this._links[key].href.split(/\//g);
-          if (parts[0] === "#_commands" || parts[0] === "#commands" || parts[0] === "#command") {
-            parts = parts.slice(1);
-          }
+          if (parts[0] === "#_commands" || parts[0] === "#commands" || parts[0] === "#command") parts = parts.slice(1);
           command = this._commands.get(parts.join("."));
-        } else {
+        } else if (this._commands) {
           command = this._commands.get(key);
         }
         if (command) return command;
@@ -4481,14 +4627,61 @@
       }
     });
     HyperboneModel.extend = BackboneModel.extend;
+    Command = HyperboneModel.extend({
+      defaults: {
+        method: "",
+        href: "",
+        properties: {}
+      },
+      reset: function() {
+        // completely remove all bound events before destroying.
+        this.off();
+        this.properties().off();
+      },
+      properties: function() {
+        return this.get("properties");
+      },
+      pushTo: function(command) {
+        var output = command.properties();
+        var input = this.properties();
+        _.each(output.attributes, function(value, key) {
+          output.set(key, input.get(key));
+        });
+        return this;
+      },
+      pullFrom: function(command) {
+        var output = this.properties();
+        var input = command.properties();
+        _.each(output.attributes, function(value, key) {
+          if (input.get(key)) {
+            output.set(key, input.get(key));
+          }
+        });
+        return this;
+      },
+      pull: function() {
+        var self = this;
+        var props = this.properties();
+        _.each(props.attributes, function(value, key) {
+          props.set(key, self._parentModel.get(key));
+        });
+      },
+      push: function() {
+        var self = this;
+        var props = this.properties();
+        _.each(props.attributes, function(value, key) {
+          self._parentModel.set(key, value);
+        });
+      }
+    });
     module.exports.Model = HyperboneModel;
     module.exports.Collection = Collection;
   })
   require.register("hyperbone-view", function(exports, require, module) {
     var _ = require("underscore"), dom = require("dom"), regex = {
-      alias: /^[A-Za-z0-9\_\.]+$/,
-      helper: /^([A-Za-z\_\.]+)\(([A-Za-z0-9\_\.]+)\)$/,
-      expression: /^([A-Za-z\_\.]+)\((|(.+))\)$/,
+      alias: /^[A-Za-z0-9\_\-\.]+$/,
+      helper: /^([A-Za-z\_\-\.]+)\(([A-Za-z0-9\_\.]+)\)$/,
+      expression: /^([A-Za-z\_\-\.]+)\((|(.+))\)$/,
       tache: /\{\{|\}\}/
     }, Events = require("backbone-events").Events, attributeHandlers = {}, templateHelpers = {};
     /**
@@ -4502,6 +4695,7 @@
       var self = this;
       this.activeNodes = [];
       this.delegates = [];
+      this.eventRefs = [];
       _.extend(this, Events);
       if (config) {
         if (config.initialised) {
@@ -4534,7 +4728,7 @@
         this.trigger("initialised", this.el, this.model);
         if (isNode(this.el.els[0])) {
           this.el.css({
-            display: "block"
+            visibility: "visible"
           });
         }
         return this;
@@ -4628,11 +4822,25 @@
         _.each(this.activeNodes, function(node) {
           node.fn = compile(node.tokens);
           _.each(node.expressions, function(expr) {
-            var expr, ev = "change";
+            var ev = "change", subExpr, modelGets, relsOrUrls;
             if (isAlias(expr)) {
               ev = "change:" + expr;
-            } else if (expr = tokeniseHelper(expr)) {
-              ev = "change:" + expr.val;
+            } else if (subExpr = tokeniseHelper(expr)) {
+              ev = "change:" + subExpr.val;
+            } else if (modelGets = expr.match(/model\.get\((\'|\")([\S]+)(\'|\")\)/g)) {
+              // test for use of model.get('something') inside a template...
+              var props = [];
+              _.each(modelGets, function(get) {
+                props.push("change:" + get.match(/model\.get\((\'|\")([\S]+)(\'|\")\)/)[2]);
+              });
+              if (props.length) {
+                ev = props.join(" ");
+              }
+            } else if (resOrUrls = expr.match(/url\(\)/)) {
+              // test for use of rel() or url() inside a template
+              ev = "change-rel:self";
+            } else if (resOrUrls = expr.match(/rel\((\'|\")([\S]+)(\'|\")\)/)) {
+              ev = "change-rel:" + resOrUrls[2];
             }
             this.model.on(ev, function(val) {
               render.call(self, node);
@@ -4688,7 +4896,11 @@
  * @api private
  */
       url: function(blank, model) {
-        return model.url();
+        try {
+          return model.url();
+        } catch (e) {
+          return "";
+        }
       },
       /**
  * "rel" template helper
@@ -4735,13 +4947,27 @@
  * @api private
  */
       rel: function(node, prop) {
+        var rel, self = this;
         // CONVENTION: If an anchor tag has a 'rel' attribute, and the model 
         // has a matching .rel(), we automatically add/populate the href attribute.
         if (node.tagName === "A") {
           rel = node.getAttribute("rel");
+          var setHref = function() {
+            var uri = self.model.rel(rel);
+            if (uri) {
+              node.style.display = "";
+              node.setAttribute("href", uri);
+            } else {
+              node.style.display = "none";
+              node.setAttribute("href", "#");
+            }
+          };
           // just quickly check the rel isn't templated. If it is, we ignore it.
           if (rel && tokenise(rel).length === 1) {
-            node.setAttribute("href", this.model.rel(rel));
+            this.model.on("add-rel:" + rel + " remove-rel:" + rel + " change-rel:" + rel, function() {
+              setHref();
+            });
+            setHref();
           }
         }
       },
@@ -4765,6 +4991,25 @@
         test();
       },
       /**
+ * "if-not" custom attribute handler. Makes an element displayed or not.
+ *
+ * @param {Object} node, {String} hb-width value
+ * @return null
+ * @api private
+ */
+      "if-not": function(node, prop, cancel) {
+        var self = this, test = function() {
+          dom(node).css({
+            display: self.model.get(prop) ? "none" : ""
+          });
+        };
+        this.model.on("change:" + prop, function() {
+          test();
+        });
+        // do the initial state.
+        test();
+      },
+      /**
  * "hb-with" custom attribute handler. Creates subview with a different scope.
  *
  * @param {Object} node, {String} hb-width value
@@ -4776,24 +5021,52 @@
         // remove this attribute so it's not found when the subview walks the dom
         node.removeAttribute("hb-with");
         collection = this.model.get(prop);
+        if (!collection) {
+          this.model.set(prop, []);
+          collection = this.model.get(prop);
+        }
         if (collection.models) {
-          inner = document.createDocumentFragment();
-          _.each(node.children, function(el) {
-            inner.appendChild(el);
-          });
-          collection.__hyperbone_view = node;
-          collection.__hyperbone_subview = inner;
+          inner = dom(Array.prototype.slice.call(node.children, 0));
+          inner.style.display = "none";
+          inner.remove();
+          node.__nodes = {};
           var render = function(collection) {
-            collection.each(function(model) {
-              var html = inner.cloneNode(true);
-              new HyperboneView().on("updated", function(el, model, event) {
-                self.trigger("updated", el, model, "subview " + prop + " " + event);
-              }).create(dom(html), model);
-              node.appendChild(html);
+            collection.each(function(model, index, models) {
+              if (!node.__nodes[model.cid]) {
+                var html = inner.clone(true);
+                var view = new HyperboneView().on("updated", function(el, model, event) {
+                  self.trigger("updated", el, model, "subview " + prop + " " + event);
+                }).create(html, model);
+                node.__nodes[model.cid] = view;
+                html.appendTo(node);
+              }
             });
           };
-          collection.on("add remove", function() {
-            node.innerHTML = "";
+          collection.on("add", function(model, models, details) {
+            render(self.model.get(prop));
+          });
+          collection.on("remove", function(model, models, details) {
+            if (collection.__nodes[model.cid]) {
+              // attempt to completely destroy the subview..
+              node.__nodes[model.cid].el.remove();
+              node.__nodes[model.cid].model.off();
+              node.__nodes[model.cid].off();
+              delete node.__nodes[model.cid];
+            }
+          });
+          collection.on("reset", function() {
+            var destroyers = [];
+            _.each(node.__nodes, function(n, id) {
+              n.el.remove();
+              n.model.off();
+              n.off();
+              destroyers.push(function() {
+                delete node.__nodes[id];
+              });
+            });
+            _.each(destroyers, function(fn) {
+              fn();
+            });
             render(self.model.get(prop));
           });
           render(collection);
@@ -4839,11 +5112,10 @@
  * @return null
  * @api private
  */
-      "hb-click-bind": function(node, prop, cancel) {
+      "hb-click-toggle": function(node, prop, cancel) {
         var self = this;
-        self.model.set(prop, false);
         dom(node).on("click", function(e) {
-          self.model.set(prop, true);
+          self.model.set(prop, !self.model.get(prop));
         });
       },
       /**
@@ -4855,7 +5127,6 @@
  */
       "hb-trigger": function(node, prop, cancel) {
         var self = this;
-        self.model.set(prop, false);
         dom(node).on("click", function(e) {
           self.model.trigger(prop, self.model, node, e);
         });
@@ -4903,10 +5174,14 @@
  * @api private
  */
     function render(node) {
+      var res = node.fn(this.model, templateHelpers);
       if (isNode(node.node)) {
-        node.node.setAttribute(node.attribute, node.fn(this.model, templateHelpers));
+        node.node.setAttribute(node.attribute, res);
       } else {
-        node.node.replaceWholeText(node.fn(this.model, templateHelpers));
+        if (res === "") {
+          res = "​";
+        }
+        node.node.replaceWholeText(res);
       }
     }
     /**
