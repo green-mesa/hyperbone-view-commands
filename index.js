@@ -84,7 +84,7 @@ function bindCommand(cmd, root, model, value){
 
 function unBindCommand(cmd, root, model, value){
 
-	root.find('name').each(function(el){
+	root.find('[name]').each(function(el){
 
 		el.off('change');
 
@@ -103,6 +103,10 @@ module.exports = {
 
 			var self = this;
 			var root = dom(node);
+			var showHide = true;
+
+			if(node.getAttribute('if') || node.getAttribute('if-not')) showHide = false;
+
 
 			var checkCommand = function(){
 				var cmd = self.model.command(value);
@@ -117,10 +121,9 @@ module.exports = {
 					// unbind if the command has been removed. We only
 					// care about clearing down the DOM events here though
 					unBindCommand(cmd, root, self.model, value);
-
 				}
 				// hide forms bound to non-existent commands
-				dom(node).css({display: ( cmd ? '': 'none') });
+				if (showHide) dom(node).css({display: ( cmd ? '': 'none') });
 			};
 			// bind to add and remove command events to make this turn on and offable and deal
 			// with commands loaded from a server after teh view initialised.
