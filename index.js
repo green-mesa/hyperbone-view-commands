@@ -74,7 +74,7 @@ function bindCommand(cmd, root, model, value){
 
 	root.on('submit', function(e){
 		e.preventDefault();
-		model.trigger('submit:' + value, cmd, function(){model.execute(value); });
+		model.trigger('submit:' + value, cmd, function(callback){model.execute(value, callback); });
 	});
 
 	root.addClass('bound-to-command');
