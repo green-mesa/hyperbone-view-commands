@@ -190,6 +190,10 @@ Binds an element to a particular command.
 - A 'bound-to-command' class is added to the form to assist debugging.
 - Will listen for hyperbone 'add-command' and 'remove-command' signals so that it can adapt to commands appearing and disappearing over time
 
+### if-property="propertyinthecomand"
+
+Utility to toggle the visibility of an element depending on whether a property exists in the command
+
 ### hb-sync-with="attributeintheparentmodel"
 
 After binding a form to a commmand, you can add this attribute to a specific input so that any value for that input is also propaged to an attribute in the parent model.

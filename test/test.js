@@ -215,6 +215,51 @@ describe("suite", function(){
 
 		});
 
+		describe('if-property', function(){
+
+			it('can show/hide form fields depending on whether the property exists', function(){
+
+				var html, m;
+
+				html = dom('<div><form hb-with-command="do-something"><input name="username" hb-sync-with="username"><input name="password"><span id="to-be-turned-invisible" if-property="invisible"><input name="invisible"></span><input type="submit" value="Submit"></form></div>');
+
+				m = new Model( useFixture('simple') );
+
+				new HyperboneView({
+					model : m,
+					el : html.els[0]
+				});
+
+				expect( html.find('#to-be-turned-invisible').els[0].style.display ).to.equal('none');
+
+			});
+
+			it('toggles dynamically depending', function(){
+
+				var html, m;
+
+				html = dom('<div><form hb-with-command="do-something"><input name="username" hb-sync-with="username"><input name="password"><span id="to-be-turned-invisible" if-property="invisible"><input name="invisible"></span><input type="submit" value="Submit"></form></div>');
+
+				m = new Model( useFixture('simple') );
+
+				new HyperboneView({
+					model : m,
+					el : html.els[0]
+				});
+
+				expect( html.find('#to-be-turned-invisible').els[0].style.display ).to.equal('none');
+
+				m.reinit( useFixture('simple-extended') );
+
+				expect( html.find('#to-be-turned-invisible').els[0].style.display ).to.not.equal('none');
+
+				m.reinit( useFixture('simple') );
+				
+				expect( html.find('#to-be-turned-invisible').els[0].style.display ).to.equal('none');
+
+			});
+
+		});
 	});
 
 	describe('Async hb-with-command', function(){

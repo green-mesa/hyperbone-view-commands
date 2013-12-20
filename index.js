@@ -11,6 +11,20 @@ function bindCommand(cmd, root, model, value){
 	var properties = cmd.get('properties');
 	var self = this;
 
+	root.find('[if-property]').each(function(el){
+
+		var property = el.attr('if-property');
+
+		var test = function(){
+			el.css({display: ( properties.get(property) === null ? 'none': '') });	
+		}
+
+		properties.on('change:' + property, test);
+
+		test();
+
+	});
+
 	root.find('[name]').each(function(el){
 
 		var property = el.attr('name'), sync;
