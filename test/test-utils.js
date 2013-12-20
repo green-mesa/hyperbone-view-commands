@@ -111,6 +111,7 @@
     };
   })
   require.register("event", function(exports, require, module) {
+    var bind = window.addEventListener ? "addEventListener" : "attachEvent", unbind = window.removeEventListener ? "removeEventListener" : "detachEvent", prefix = bind !== "addEventListener" ? "on" : "";
     /**
  * Bind `el` event `type` to `fn`.
  *
@@ -122,11 +123,7 @@
  * @api public
  */
     exports.bind = function(el, type, fn, capture) {
-      if (el.addEventListener) {
-        el.addEventListener(type, fn, capture);
-      } else {
-        el.attachEvent("on" + type, fn);
-      }
+      el[bind](prefix + type, fn, capture || false);
       return fn;
     };
     /**
@@ -140,11 +137,7 @@
  * @api public
  */
     exports.unbind = function(el, type, fn, capture) {
-      if (el.removeEventListener) {
-        el.removeEventListener(type, fn, capture);
-      } else {
-        el.detachEvent("on" + type, fn);
-      }
+      el[unbind](prefix + type, fn, capture || false);
       return fn;
     };
   })
@@ -186,9 +179,8 @@
     };
   })
   require.register("indexof", function(exports, require, module) {
-    var indexOf = [].indexOf;
     module.exports = function(arr, obj) {
-      if (indexOf) return arr.indexOf(obj);
+      if (arr.indexOf) return arr.indexOf(obj);
       for (var i = 0; i < arr.length; ++i) {
         if (arr[i] === obj) return i;
       }
@@ -4198,7 +4190,7 @@
     });
     var makeTemplate = require("uritemplate").parse;
     var Command;
-    var HyperboneModel = function(attributes, options) {
+    var HyperboneModel = function HyperboneModel(attributes, options) {
       // we override the initial function because we need to force a hypermedia parse at the
       // instantiation stage, not just the fetch/sync stage
       attributes || (attributes = {});
@@ -4208,10 +4200,18 @@
       this.cid = _.uniqueId("c");
       this.isHyperbone = true;
       if (!this._prototypes) this._prototypes = {};
+      if (!this.syncCommands) this.syncCommands = false;
       options || (options = {});
       if (attributes._prototypes) {
         _.extend(this._prototypes, attributes._prototypes);
         delete attributes._prototypes;
+      }
+      if (attributes.syncCommands) {
+        this.syncCommands = true;
+        this.syncEvents = [];
+        // we keep a reference to any handlers we make so we can delete the old
+        // ones if the model get reinitialised
+        delete attributes.syncCommands;
       }
       if (options && options.collection) {
         this.collection = options.collection;
@@ -4224,15 +4224,58 @@
       this.set(attributes, {
         silent: true
       });
+      if (this.syncCommands) {
+        this.reinitCommandSync();
+      }
       this.changed = {};
       this.initialize.apply(this, arguments);
     };
     _.extend(HyperboneModel.prototype, BackboneModel.prototype, {
-      reinit: function(attributes, options) {
+      reinit: function reinitialiseModel(attributes, options) {
         attributes = _.defaults({}, attributes, _.result(this, "defaults"));
+        if (this.parser) attributes = this.parser(attributes);
         this.set(attributes);
+        if (this.syncCommands) {
+          this.reinitCommandSync();
+        }
       },
-      parseHypermedia: function(attributes) {
+      reinitCommandSync: function reinitCommands() {
+        var self = this;
+        // unsubscribe any existing sync handlers...
+        _.each(self.syncEvents, function(obj) {
+          self.off(obj.event, obj.handler);
+        });
+        self.syncEvents = [];
+        _.each(self.attributes, function(val, attr) {
+          // only interested in backbone style top level key values.
+          if (self._commands && !_.isObject(val)) {
+            _.each(self._commands.attributes, function(cmd) {
+              var props = cmd.properties();
+              if (props.get(attr) === val) {
+                // we have a pair!!!
+                var ev = {
+                  event: "change:" + attr,
+                  handler: function(model, newVal) {
+                    var curVal = props.get(attr);
+                    if (curVal !== newVal) {
+                      props.set(attr, newVal);
+                    }
+                  }
+                };
+                props.on(ev.event, function(model, newVal) {
+                  var curVal = self.get(attr);
+                  if (curVal !== newVal) {
+                    self.set(attr, newVal);
+                  }
+                });
+                self.on(ev.event, ev.handler);
+                self.syncEvents.push(ev);
+              }
+            });
+          }
+        });
+      },
+      parseHypermedia: function parseHypermedia(attributes) {
         var self = this, signals = [];
         // update existing links for existing models
         if (attributes._links && this._links) {
@@ -4274,7 +4317,18 @@
         _.each(this._links, function(link, id) {
           if (_.isArray(link) && link.length === 1) {
             this._links[id] = link[0];
+          } else if (_.isArray(link)) {
+            _.each(link, function(link, id) {
+              if (link.templated) {
+                link.template = makeTemplate(link.href);
+              }
+            });
+          } else if (link.templated) {
+            link.template = makeTemplate(link.href);
           }
+        }, this);
+        // make templates
+        _.each(this._links, function(link, id) {
           if (link.templated) {
             link.template = makeTemplate(link.href);
           }
@@ -4309,11 +4363,21 @@
                 if (key !== "properties") {
                   currentCmd.set(key, value);
                 } else {
+                  _.each(currentCmd.properties().toJSON(), function(currentValue, key) {
+                    if (!value[key]) {
+                      currentCmd.properties().unset(key, null);
+                    }
+                  });
                   _.each(value, function(value, key) {
-                    currentCmd.set("properties." + key, value);
+                    currentCmd.properties().set(key, value);
                   });
                 }
               });
+              if (!cmd.href) {
+                currentCmd.set("href", self.url(), {
+                  silent: true
+                });
+              }
             } else {
               // a new command?
               this._commands.set(id, new Command(cmd));
@@ -4341,12 +4405,12 @@
         });
         return attributes;
       },
-      toJSON: function() {
+      toJSON: function toJSON() {
         var obj = {};
         _.each(this.attributes, function(attr, key) {
           if (attr && attr.isHyperbone) {
             obj[key] = attr.toJSON();
-          } else if (attr) {
+          } else if (attr || attr === 0 || attr === "") {
             obj[key] = attr;
           } else {
             obj[key] = "";
@@ -4360,7 +4424,7 @@
         }
         return obj;
       },
-      url: function(uri) {
+      url: function getUrl(uri) {
         if (uri) {
           _.extend(this._links, {
             self: {
@@ -4375,7 +4439,7 @@
           throw new Error("Not a hypermedia resource");
         }
       },
-      get: function(attr) {
+      get: function hyperboneGet(attr) {
         if (this.attributes[attr] || this.attributes[attr] === 0 || this.attributes[attr] === "") {
           return this.attributes[attr];
         } else if (_.indexOf(attr, ".") !== -1 || /([a-zA-Z_]+)\[([0-9]+)\]/.test(attr)) {
@@ -4403,7 +4467,7 @@
         }
         return null;
       },
-      set: function(key, val, options) {
+      set: function hyperboneSet(key, val, options) {
         var self = this;
         if (key && (key._links || key._commands || key._embedded)) {
           key = this.parseHypermedia(key);
@@ -4443,8 +4507,26 @@
             if (_.isObject(value) && current[key] && current[key].isHyperbone) {
               // is it an array, and we have a matching collection?
               if (_.isArray(value) || current[key].models) {
+                var Proto;
                 // if we have a collection but it's not an array, make it an array
                 value = _.isArray(value) ? value : [ value ];
+                // if we have an array but current[key]is a model, make it a collection
+                if (current[key].attributes) {
+                  if (this._prototypes[key]) {
+                    Proto = this._prototypes[key];
+                  } else {
+                    Proto = HyperboneModel;
+                  }
+                  // we want the default model to be a hyperbone model
+                  // or whatever the user has selected as a prototype
+                  var EmbeddedCollection = Collection.extend({
+                    model: Proto
+                  });
+                  // create an embedded collection..
+                  var collection = new EmbeddedCollection();
+                  collection.add(current[key]);
+                  current[key] = collection;
+                }
                 // if the existing collection or the array has no members...
                 if (value.length === 0 || current[key].length === 0) {
                   // call reset to minimise the number of events fired
@@ -4462,7 +4544,7 @@
                       model.set(value[index]);
                     } else {
                       destroyers.push(function() {
-                        model.remove();
+                        current[key].remove(model);
                       });
                     }
                   });
@@ -4488,13 +4570,13 @@
                 delete attrs[key];
               }
             }
-          });
+          }, this);
         }
         // having dealt with updating any nested models/collections, we 
         // now do set for attributes for this particular model
         _.each(attrs, function(val, attr) {
           // is the request a dot notation request?
-          if (_.indexOf(attr, ".") !== -1 && !ignoreDotNotation) {
+          if (attr.indexOf(".") !== -1 && !ignoreDotNotation) {
             // break it up, recusively call set..
             parts = attr.split(".");
             attr = parts.pop();
@@ -4514,15 +4596,17 @@
                 val._parent = self;
               }
               if (val.on) {
-                val._trigger = val.trigger;
-                val.trigger = function(attr) {
-                  return function() {
-                    var args = Array.prototype.slice.call(arguments, 0);
-                    this._trigger.apply(this, args);
-                    args[0] = args[0] + ":" + attr;
-                    self.trigger.apply(self, args);
-                  };
-                }(attr);
+                if (!val._trigger) {
+                  val._trigger = val.trigger;
+                  val.trigger = function(attr) {
+                    return function() {
+                      var args = Array.prototype.slice.call(arguments, 0);
+                      this._trigger.apply(this, args);
+                      args[0] = args[0] + ":" + attr;
+                      self.trigger.apply(self, args);
+                    };
+                  }(attr);
+                }
               }
             } else if (_.isArray(val)) {
               // we only want to convert a an array of objects
@@ -4594,7 +4678,7 @@
         this._changing = false;
         return this;
       },
-      rel: function(rel, data) {
+      rel: function getRel(rel, data) {
         var link = this._links[rel] || {};
         if (!link) throw new Error("No such rel found");
         if (link.templated) {
@@ -4604,16 +4688,16 @@
         if (this._links && this._links[rel]) return this._links[rel].href ? this._links[rel].href : this._links[rel];
         return "";
       },
-      rels: function() {
+      rels: function listRels() {
         return this._links;
       },
-      fullyQualifiedRel: function(rel) {
+      fullyQualifiedRel: function getFullyQualifiedRel(rel) {
         var parts = rel.split(":");
         return this._curies[parts[0]].expand({
           rel: parts[1]
         });
       },
-      command: function(key) {
+      command: function getCommand(key) {
         var command;
         if (this._links[key] && this._commands) {
           var parts = this._links[key].href.split(/\//g);
@@ -4624,6 +4708,15 @@
         }
         if (command) return command;
         return null;
+      },
+      getCommandProperty: function getCommandProperty(key) {
+        var bits = key.split(".");
+        return this.command(bits[0]).get("properties").get(bits[1]);
+      },
+      setCommandProperty: function setCommandProperty(key, value) {
+        var bits = key.split(".");
+        this.command(bits[0]).get("properties").set(bits[1], value);
+        return this;
       }
     });
     HyperboneModel.extend = BackboneModel.extend;
@@ -4640,6 +4733,9 @@
       },
       properties: function() {
         return this.get("properties");
+      },
+      property: function(prop) {
+        return this.get("properties").get(prop);
       },
       pushTo: function(command) {
         var output = command.properties();
@@ -4921,6 +5017,28 @@
  */
       expression: function(result) {
         return result;
+      },
+      /**
+ * "if" template helper, returns string if expression is truthy
+ *
+ * @param {Expression} val, {String} str
+ * @return string
+ * @api private
+ */
+      "if": function(val, str) {
+        // this helper returns str if val is truthy. 
+        return val ? str : "";
+      },
+      /**
+ * "if-eq" template helper, returns str if the value equals the comparator
+ *
+ * @param {Expression} val, {Expression} com {String} str
+ * @return string
+ * @api private
+ */
+      "if-eq": function(val, com, str) {
+        // this helper returns str if val is sequel to the comparator.
+        return val === com ? str : "";
       }
     });
     /**
@@ -5046,7 +5164,7 @@
             render(self.model.get(prop));
           });
           collection.on("remove", function(model, models, details) {
-            if (collection.__nodes[model.cid]) {
+            if (node.__nodes[model.cid]) {
               // attempt to completely destroy the subview..
               node.__nodes[model.cid].el.remove();
               node.__nodes[model.cid].model.off();
@@ -5128,7 +5246,9 @@
       "hb-trigger": function(node, prop, cancel) {
         var self = this;
         dom(node).on("click", function(e) {
-          self.model.trigger(prop, self.model, node, e);
+          self.model.trigger(prop, self.model, prop, function() {
+            e.preventDefault();
+          });
         });
       }
     });
