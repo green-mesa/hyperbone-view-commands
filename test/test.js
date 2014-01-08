@@ -185,7 +185,41 @@ describe("suite", function(){
 			expect( html.find('option').at(2).attr('value')).to.equal('3');
 			expect( html.find('option').at(2).text() ).to.equal('Three');	
 
-		})
+		});
+
+		it('can automatically set an input to required with the appropriate schema', function(){
+
+			var html, m;
+
+			html = dom('<div><form hb-with-command="with-required"><label for="required-input">Required Input</label><input name="required-input"></form></div>');
+
+			m = new Model({
+				_commands : {
+					'with-required' : {
+						href : "/",
+						method : "POST",
+						properties : {
+							'required-input' : 'Hello'
+						},
+						schema : {
+							'required-input' : {
+								required : "required"
+							}
+						}
+
+					}
+				}
+			});
+
+			new HyperboneView({
+				model : m,
+				el : html.els[0]
+			});
+
+			expect( html.find('input').attr('required') ).to.equal('required');
+			expect( html.find('label').hasClass('required')).to.equal(true);
+
+		});
 
 		describe('hb-sync-with', function(){
 

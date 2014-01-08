@@ -27,16 +27,29 @@ function bindCommand(cmd, root, model, value){
 
 	root.find('[name]').each(function(el){
 
-		var property = el.attr('name'), sync;
+		var property = el.attr('name'), sync, schema;
 
-		if(el.is('select') && cmd.get('schema.' + property + ".options")){
-			cmd.get('schema.' + property + ".options").each(function(option){
-				el.els[0].appendChild(dom('<option value="' + option.get('value')+ '">' + option.get('name') + '</option>').els[0]);
-			});
+		if(schema = cmd.get('schema')){
+
+			if(el.is('select') && schema.get(property + ".options")){
+				cmd.get('schema.' + property + ".options").each(function(option){
+					el.els[0].appendChild(dom('<option value="' + option.get('value')+ '">' + option.get('name') + '</option>').els[0]);
+				});
+			}
+
+			if(schema.get(property + ".required")){
+				el.attr('required', 'required');
+				var label = root.find('label[for="' + property + '"]');
+				if(label.length()){
+					label.addClass('required');
+				}		
+			}
+
 		}
 
 		var val = properties.get(property);
 		el.val(val);
+
 
 		if(el.attr('type') === 'file'){
 

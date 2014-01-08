@@ -2,7 +2,7 @@
   "name": "hyperbone-view-commands",
   "repo": "green-mesa/hyperbone-view-commands",
   "description": "Adds support for _commands to Hyperbone View",
-  "version": "0.1.6",
+  "version": "0.1.8",
   "keywords": [],
   "dependencies": {
     "green-mesa/dom": "0.12.0"
