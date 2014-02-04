@@ -221,6 +221,48 @@ describe("suite", function(){
 
 		});
 
+		it('gets the "checked" value of checkbox input from the schema', function(){
+
+			var html, m;
+
+			html = dom('<div><form hb-with-command="with-required"><label for="checkbox-input">Checkbox Input</label><input type="checkbox" name="checkbox-input"></form></div>');
+
+			m = new Model({
+				_commands : {
+					'with-required' : {
+						href : "/",
+						method : "POST",
+						properties : {
+							'checkbox-input' : true
+						},
+						schema : {
+							'checkbox-input' : {
+								type : 'html-checkbox',
+								value : "true" // the default is 'on'. 
+							}
+						}
+
+					}
+				}
+			});
+
+			new HyperboneView({
+				model : m,
+				el : html.els[0]
+			});
+
+			expect( html.find('input').attr('value') ).to.equal("true");
+			expect( html.find('input').els[0].checked ).to.equal(true);
+			expect( html.find('input').val() ).to.equal("true");
+			
+			m.setCommandProperty('with-required.checkbox-input', false);
+
+			expect( html.find('input').els[0].checked ).to.equal(false);
+			expect( html.find('input').val() ).to.equal(false);
+
+
+		});
+
 		describe('hb-sync-with', function(){
 
 			it('can synchronise a command property with an attribute on the parent model', function( done ){

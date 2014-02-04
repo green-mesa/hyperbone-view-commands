@@ -16,7 +16,7 @@ function bindCommand(cmd, root, model, value){
 		var property = el.attr('if-property');
 
 		var test = function(){
-			el.css({display: ( properties.get(property) === null ? 'none': '') });	
+			el.css({display: ( properties.attributes.hasOwnProperty(property) ? '': 'none') });	
 		}
 
 		properties.on('change:' + property, test);
@@ -43,6 +43,14 @@ function bindCommand(cmd, root, model, value){
 				if(label.length()){
 					label.addClass('required');
 				}		
+			}
+
+			if(schema.get(property + ".type") === "html-checkbox"){
+				var valueAttribute = cmd.get('schema.' + property + ".value");
+
+				if(valueAttribute){
+					el.attr('value', valueAttribute);
+				}
 			}
 
 		}

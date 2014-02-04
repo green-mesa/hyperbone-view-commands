@@ -179,8 +179,9 @@
     };
   })
   require.register("indexof", function(exports, require, module) {
+    var indexOf = [].indexOf;
     module.exports = function(arr, obj) {
-      if (arr.indexOf) return arr.indexOf(obj);
+      if (indexOf) return arr.indexOf(obj);
       for (var i = 0; i < arr.length; ++i) {
         if (arr[i] === obj) return i;
       }
@@ -530,6 +531,7 @@
       if (!obj.all) throw new Error(".all callback required");
       one = obj.one;
       exports.all = obj.all;
+      return exports;
     };
   })
   require.register("matches-selector", function(exports, require, module) {
@@ -4356,7 +4358,7 @@
           }
           _.each(attributes._commands, function(cmd, id) {
             // is it an existing command?
-            var currentCmd;
+            var currentCmd, diffCount = 0;
             if (currentCmd = this.command(id)) {
               // assignment on purpose. DO NOT FIX.
               _.each(cmd, function(value, key) {
@@ -4364,12 +4366,20 @@
                   currentCmd.set(key, value);
                 } else {
                   _.each(currentCmd.properties().toJSON(), function(currentValue, key) {
+                    // removing 
                     if (!value[key]) {
+                      ++diffCount;
                       currentCmd.properties().unset(key, null);
                     }
                   });
                   _.each(value, function(value, key) {
+                    if (!currentCmd.properties().attributes[key]) {
+                      ++diffCount;
+                    }
                     currentCmd.properties().set(key, value);
+                  });
+                  signals.push(function() {
+                    self.trigger("change-command-structure:" + id, self, currentCmd);
                   });
                 }
               });
@@ -4378,14 +4388,22 @@
                   silent: true
                 });
               }
+              currentCmd._isClean = true;
+              currentCmd._clean = currentCmd.properties().toJSON();
+              signals.push(function() {
+                self.trigger("clean:" + id);
+              });
             } else {
               // a new command?
               this._commands.set(id, new Command(cmd));
               var newCmd = this.command(id);
               newCmd._parentModel = self;
+              newCmd._hbId = id;
               _.each(newCmd.properties().attributes, function(value, key) {
                 newCmd.properties().on("change:" + key, function(properties, value) {
                   self.trigger("change:" + key + ":" + id, newCmd, value);
+                  newCmd._isClean = false;
+                  self.trigger("dirty:" + id);
                 });
               });
               if (!cmd.href) {
@@ -4393,8 +4411,12 @@
                   silent: true
                 });
               }
+              newCmd._isClean = true;
+              newCmd._clean = newCmd.properties().toJSON();
               signals.push(function() {
                 self.trigger("add-command:" + id);
+                // it's brand new so it's always clean.
+                self.trigger("clean:" + id);
               });
             }
           }, this);
@@ -4510,59 +4532,67 @@
                 var Proto;
                 // if we have a collection but it's not an array, make it an array
                 value = _.isArray(value) ? value : [ value ];
-                // if we have an array but current[key]is a model, make it a collection
-                if (current[key].attributes) {
-                  if (this._prototypes[key]) {
-                    Proto = this._prototypes[key];
+                var nonObjects = _.reduce(value, function(memo, val) {
+                  if (!_.isObject(val)) {
+                    return memo + 1;
                   } else {
-                    Proto = HyperboneModel;
+                    return memo;
                   }
-                  // we want the default model to be a hyperbone model
-                  // or whatever the user has selected as a prototype
-                  var EmbeddedCollection = Collection.extend({
-                    model: Proto
-                  });
-                  // create an embedded collection..
-                  var collection = new EmbeddedCollection();
-                  collection.add(current[key]);
-                  current[key] = collection;
-                }
-                // if the existing collection or the array has no members...
-                if (value.length === 0 || current[key].length === 0) {
-                  // call reset to minimise the number of events fired
-                  current[key].reset(value);
-                } else if (current[key].length === value.length) {
-                  // we do a straight change operation on each
-                  current[key].each(function(model, index) {
-                    model.set(value[index]);
-                  });
-                } else if (current[key].length > value.length) {
-                  // we need to remove some models
-                  var destroyers = [];
-                  current[key].each(function(model, index) {
-                    if (value[index]) {
+                }, 0);
+                if (nonObjects === 0) {
+                  // if we have an array but current[key]is a model, make it a collection
+                  if (current[key].attributes) {
+                    if (this._prototypes[key]) {
+                      Proto = this._prototypes[key];
+                    } else {
+                      Proto = HyperboneModel;
+                    }
+                    // we want the default model to be a hyperbone model
+                    // or whatever the user has selected as a prototype
+                    var EmbeddedCollection = Collection.extend({
+                      model: Proto
+                    });
+                    // create an embedded collection..
+                    var collection = new EmbeddedCollection();
+                    collection.add(current[key]);
+                    current[key] = collection;
+                  }
+                  // if the existing collection or the array has no members...
+                  if (value.length === 0 || current[key].length === 0) {
+                    // call reset to minimise the number of events fired
+                    current[key].reset(value);
+                  } else if (current[key].length === value.length) {
+                    // we do a straight change operation on each
+                    current[key].each(function(model, index) {
                       model.set(value[index]);
-                    } else {
-                      destroyers.push(function() {
-                        current[key].remove(model);
-                      });
-                    }
-                  });
-                  _.each(destroyers, function(fn) {
-                    fn();
-                  });
-                } else {
-                  // we need to add some models
-                  _.each(value, function(value, index) {
-                    if (current[key].at(index)) {
-                      current[key].at(index).set(value);
-                    } else {
-                      current[key].add(value);
-                    }
-                  });
+                    });
+                  } else if (current[key].length > value.length) {
+                    // we need to remove some models
+                    var destroyers = [];
+                    current[key].each(function(model, index) {
+                      if (value[index]) {
+                        model.set(value[index]);
+                      } else {
+                        destroyers.push(function() {
+                          current[key].remove(model);
+                        });
+                      }
+                    });
+                    _.each(destroyers, function(fn) {
+                      fn();
+                    });
+                  } else {
+                    // we need to add some models
+                    _.each(value, function(value, index) {
+                      if (current[key].at(index)) {
+                        current[key].at(index).set(value);
+                      } else {
+                        current[key].add(value);
+                      }
+                    });
+                  }
+                  delete attrs[key];
                 }
-                // clean up attributes
-                delete attrs[key];
               } else {
                 // it exists in the current model, but it's not an array 
                 // so this is quite straightforward : recurse into set
@@ -4726,10 +4756,24 @@
         href: "",
         properties: {}
       },
+      initialize: function() {
+        var self = this;
+        this.on("clean", function() {
+          if (!self._isClean) {
+            self.properties().set(self._clean);
+            self._isClean = true;
+            self._parentModel.trigger("clean:" + self._hbId);
+          }
+        });
+      },
       reset: function() {
         // completely remove all bound events before destroying.
         this.off();
         this.properties().off();
+      },
+      clean: function() {
+        this.trigger("clean");
+        return this;
       },
       properties: function() {
         return this.get("properties");
