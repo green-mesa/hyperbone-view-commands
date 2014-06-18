@@ -1,6 +1,6 @@
 {
   "name": "hyperbone-view-commands",
-  "version": "0.1.10",
+  "version": "0.1.12",
   "description": "Adds support for _commands to Hyperbone View",
   "main": "index.js",
   "scripts": {
