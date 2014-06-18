@@ -13,5 +13,8 @@
   "license": "MIT",
   "scripts": [
     "index.js"
+  ],
+  "remotes" : [
+    "https://raw.githubusercontent.com"
   ]
 }
