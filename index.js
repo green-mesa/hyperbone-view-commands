@@ -49,6 +49,8 @@ function bindCommand(cmd, root, model, value){
 
 			if (schema.get(property + ".disabled")){
 				el.attr('disabled', 'disabled');	
+			} else {
+				el.removeAttr("disabled");
 			}
 
 			if (schema.get(property + ".type") === "html-checkbox"){
