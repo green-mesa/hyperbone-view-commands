@@ -1,10 +1,13 @@
 {
   "name": "hyperbone-view-commands",
-  "version": "0.1.14",
+  "version": "0.1.16",
   "description": "Adds support for _commands to Hyperbone View",
   "main": "index.js",
   "scripts": {
     "test": "grunt install-build-test"
+  },
+  "dependencies" : {
+    "green-mesa-dom" : "0.12.2"
   },
   "repository": {
     "type": "git",
@@ -26,5 +29,8 @@
   },
   "author": "template",
   "license": "MIT",
-  "readmeFilename": "Readme.md"
+  "readmeFilename": "Readme.md",
+  "browser" : {
+    "dom" : "green-mesa-dom"
+  }
 }

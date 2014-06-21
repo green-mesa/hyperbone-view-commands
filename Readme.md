@@ -6,6 +6,22 @@
 
 Basic `_command` to `<form>` bindings for Hyperbone View. This is a lot lot lot more useful than it sounds.
 
+
+## Installing
+
+Browserify
+
+```sh
+$ npm install --save hyperbone-view-commands
+```
+
+Component
+
+```sh
+$ component install green-mesa/hyperbone-view-commands
+```
+
+
 ## Introduction
 
 This module is what makes Hyperbone fun and interesting to build applications with, but it's by far the most aggressively opinionated bit of Hyperbone, so it lives in its own handily optional module that you can use or not. 
@@ -162,12 +178,6 @@ And when they fill in the login form and submit, and that command gets executed 
 }
 ```
 The view automatically updates itself, as you'd expect.
-
-## Installing
-
-```sh
-$ component install green-mesa/hyperbone-view-commands
-```
 
 ## Usage
 
